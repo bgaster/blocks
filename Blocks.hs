@@ -27,6 +27,7 @@ import Control.Concurrent (threadDelay)
 import Control.Monad.RWS.Strict  (RWST, ask, asks, evalRWST, get, liftIO, modify, put)
 import Data.Bool.Extras
 import System.Random
+import FontAtlas
 
 import Window
 
@@ -294,6 +295,7 @@ iterationDelay :: Int -> Double
 iterationDelay level = (11.0 - (fromIntegral level)) * 0.05
 
 block     = SField :: SField ("block"    ::: BlockID)
+nblock    = SField :: SField ("nblock"   ::: BlockID)
 rotation  = SField :: SField ("rotation" ::: Int)
 pos       = SField :: SField ("position" ::: Pos)
 board     = SField :: SField ("board"    ::: Board)
@@ -303,19 +305,20 @@ idelay    = SField :: SField ("idelay"   ::: Double)
 ticks     = SField :: SField ("ticks"    ::: Double)
 frames    = SField :: SField ("frames"   ::: Double)
 
-type World' = ["block" ::: BlockID, "rotation" ::: Int, "position" ::: Pos,
+type World' = ["block" ::: BlockID, "nblock" ::: BlockID, "rotation" ::: Int, "position" ::: Pos,
                "board" ::: Board, "score" ::: Int, "nlines" ::: Int, "idelay" ::: Double,
                "ticks" ::: Double, "frames" ::: Double]
 
 type World = PlainFieldRec World' 
 
-mkWorld :: BlockID -> Int -> Pos -> Board -> Int -> Int -> Double -> Double -> Double -> World
-mkWorld id r p b s l d t f = block =: id <+> rotation =: r <+> pos =: p <+>
-                             board =: b <+> score =: s <+> nlines =: l <+>
-                             idelay =: d <+> ticks =: t <+> frames =: f
+mkWorld :: BlockID -> BlockID -> Int -> Pos -> Board -> Int -> Int -> Double -> Double -> Double -> World
+mkWorld id nid r p b s l d t f =
+  block =: id <+> nblock =: nid <+> rotation =: r <+> pos =: p <+>
+  board =: b <+> score =: s <+> nlines =: l <+>
+  idelay =: d <+> ticks =: t <+> frames =: f
 
-initialWorld :: BlockID -> World
-initialWorld bid = mkWorld bid 0 (initialPosition bid)
+initialWorld :: BlockID -> BlockID -> World
+initialWorld bid nbid = mkWorld bid nbid 0 (initialPosition bid)
                            (fromJust $ overlayBoard UPlace (Just emptyBoard) $
                             placeBlockEmptyBoard' (initialPosition bid) bid 0) 0 0
                             (iterationDelay 1) 0.0 0.0
@@ -370,10 +373,26 @@ square x y = [[V2 (x * cell_width) (y * cell_height + cell_height),
               ]
    where
      cell_width :: GLfloat
-     cell_width = 1.0 / 10
+     cell_width = 1.0 / 16
 
      cell_height :: GLfloat
      cell_height = 1.0 / 20
+
+-- As we only want to print the minimum number of digits we
+-- generate verts least digit first and then we simply draw the required
+-- number of triangles. Score limited to 5 digits!!
+scoreText :: GLfloat  ->  
+             GLfloat  ->
+             CharInfo ->
+             [Char] ->
+             IO (BufferedVertices [VPos,Tex])
+scoreText x y offsets (d1:d2:d3:d4:d5:_) = bufferVertices vt
+  where (o,o',h) = charToOffsetWidthHeight offsets d1 
+        vt :: [PlainFieldRec [VPos,Tex]]
+        vt = concat $ zipWith (zipWith (\pt uv -> vpos =: pt <+> tex =: uv)) v t 
+        v = square x y
+        t = [[V2 o 0, V2 o' 0, V2 o h],
+             [V2 o h, V2 o' h, V2 o' 0]]
 
 -- Generate the triangles for the board, this is done just once
 -- If we used a SOA VOA, then we could upload this once and never again
@@ -383,15 +402,14 @@ graphicsBoard = concat $ concat $ b
                 [19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]
 
 initialGraphicsBoard :: Board -> [PlainFieldRec [VPos,Tex]]
-initialGraphicsBoard = concat . zipWith (zipWith (\pt uv -> vpos =: pt <+> tex =: uv)) graphicsBoard . boardToTex
+initialGraphicsBoard =
+  concat . zipWith (zipWith (\pt uv -> vpos =: pt <+> tex =: uv)) graphicsBoard . boardToTex
 
 --boardToTex :: Board -> [[ [[UV]] ]]
 boardToTex = concat . map (foldr (\a b -> (blockTex!!a) ++ b) [])
 
 boardVerts :: Board -> IO (BufferedVertices [VPos,Tex])
 boardVerts = bufferVertices . initialGraphicsBoard 
-
---(fromJust $ placeBlock (initialPosition blockIDL) emptyBoard blockIDL 0)
 
 type GLInfo = PlainFieldRec '["cam" ::: M33 GLfloat]
 
@@ -465,6 +483,7 @@ play verts ui world = do
               rot     = world ^. rLens rotation
               rot'    = calRot rot u
               bid     = world ^. rLens block
+              nbid    = world ^. rLens nblock
                     
               -- try and place updated piece (including any user movement)
               b       = overlayBoard UReplace (Just $ world ^. rLens board) $
@@ -476,7 +495,7 @@ play verts ui world = do
               nd      = bool d (iterationDelay (levelUp (world ^. rLens nlines))) (d <= 0)
           if isJust ub -- can piece be placed, including user movement
           then do reloadVertices verts (fromList $ initialGraphicsBoard $ fromJust ub)
-                  return $ Just $ mkWorld bid rot' (x',y'') (fromJust ub) 
+                  return $ Just $ mkWorld bid nbid rot' (x',y'') (fromJust ub) 
                                                (world ^. rLens score) (world ^. rLens nlines) 
                                                nd
                                                (world ^. rLens ticks) ((world ^. rLens frames) + 1)
@@ -484,7 +503,7 @@ play verts ui world = do
                       ub' = overlayBoard UPlace b pb'
                   if isJust ub'
                   then do reloadVertices verts (fromList $ initialGraphicsBoard $ fromJust ub')
-                          return $ Just $ mkWorld bid rot' (x, y + yadd) (fromJust ub') 
+                          return $ Just $ mkWorld bid nbid rot' (x, y + yadd) (fromJust ub') 
                                                (world ^. rLens score) (world ^. rLens nlines) 
                                                nd
                                                (world ^. rLens ticks) ((world ^. rLens frames) + 1)
@@ -498,13 +517,13 @@ play verts ui world = do
                                         print ("level = " ++ show l)
                                         return ss
                                 else return s
-                          nbid <- chooseBlock
+                          nbid' <- chooseBlock
                           let (nx,ny) = initialPosition nbid
                               npb = placeBlockEmptyBoard' (nx,ny) nbid 0
                               nb  = overlayBoard UPlace (Just $ upb) npb
                           if isJust nb
                           then do reloadVertices verts (fromList $ initialGraphicsBoard $ fromJust nb)
-                                  return $ Just $ mkWorld nbid 0 (nx,ny) (fromJust nb) 
+                                  return $ Just $ mkWorld nbid nbid' 0 (nx,ny) (fromJust nb) 
                                                       s' nl
                                                       nd
                                                       (world ^. rLens ticks) ((world ^. rLens frames) + 1)
@@ -513,8 +532,10 @@ play verts ui world = do
 
 renderer :: World -> IO (GLInfo -> World -> UI -> IO (Maybe World))
 renderer iworld = do
+   ts <- simpleShaderProgram ("shaders"</>"text.vert") ("shaders"</>"text.frag")
+   s  <- simpleShaderProgram ("shaders"</>"piece.vert") ("shaders"</>"piece.frag")
+   
    [blocks] <- loadTextures ["blocks.png"]
-   s <- simpleShaderProgram ("shaders"</>"piece.vert") ("shaders"</>"piece.frag")
    putStrLn "Loaded shaders"
    setUniforms s (texSampler =: 0)
    nbid <- chooseBlock
@@ -524,6 +545,15 @@ renderer iworld = do
      enableVertices' s verts
      bindVertices verts
      bindBuffer ElementArrayBuffer $= Just indices
+     
+   (chars, offsets)  <- createAtlas ("resources"</>"ArcadeClassic.ttf") 48 1
+   setUniforms ts (texSampler =: 1)
+   tverts <- scoreText 10 18 offsets ['0', '0', '0', '0', '0']
+   tindices <- bufferIndices [0 .. 2 * 3 * 4]
+   tvao <- makeVAO $ do
+     enableVertices' ts tverts
+     bindVertices tverts
+     bindBuffer ElementArrayBuffer $= Just tindices
 
    return $ \i world ui -> do
      currentProgram $= Just (program s)
@@ -533,6 +563,7 @@ renderer iworld = do
 
      if isJust w
      then do withVAO vao . withTextures2D [blocks] $ drawIndexedTris (2 * 10 * 20)
+             withVAO tvao . withTextures2D [chars] $ drawIndexedTris 2
              return w
      else return w
              
@@ -541,7 +572,7 @@ renderer iworld = do
 
 loop :: IO UI -> World -> IO ()
 loop tick world = do
-  clearColor $= Color4 0.5 0.5 0.5 1
+  clearColor $= Color4 0.01 0.01 0.01 1
   r <- Blocks.renderer world
   go camera2D world r
   where go :: Camera GLfloat -> World -> (GLInfo -> World -> UI -> IO (Maybe World)) -> IO ()
@@ -555,15 +586,16 @@ loop tick world = do
           if isNothing world'
           then return ()
           else do --let world'' = (ticks `rPut` (((fromJust world') ^. rLens ticks) + timeStep ui) ) (fromJust world')
-                      --fps = (world'' ^. rLens frames) / ((world'' ^. rLens ticks))
+                  --fps = (world'' ^. rLens frames) / ((world'' ^. rLens ticks))
                   --print ("FPS: " ++ show fps)
                   swapBuffers (window ui) >> go c (fromJust world') draw
 
 main :: IO ()
 main = do
-  let width  = 480
+  let width  = 580
       height = 960
   tick      <- initGL "ABC or Another Blocks Clone" width height
   bid       <- chooseBlock
-  loop tick $ initialWorld bid
+  nbid      <- chooseBlock  
+  loop tick $ initialWorld bid nbid
   return ()

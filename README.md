@@ -16,9 +16,10 @@ TODO
   * Extend Vinyl-GL to do this.
 2. Extend GLUtil to add text rendering support
 3. Add renderer score board
+  * FontAtlas now added, need to add rendering for the score
 4. Add some music
 5. Add pause key
 6. Add drop key
 7. Add new game
-8. Reright using FRP, most likely Netwire but we will see
+8. Rewrite using FRP, most likely Netwire but we will see
   * I'm actually not convinced tht this is better than the current approach but I want to better understand this "more functional" approach.

@@ -44,6 +44,13 @@ fontFace ft fp = withCString fp $ \str ->
         runFreeType $ ft_New_Face ft str 0 ptr
         peek ptr
 
+addPadding :: Int -> Int -> a -> [a] -> [a]
+addPadding _ _ _ [] = []
+addPadding amt w val xs = a ++ b ++ c
+    where a = take w xs
+          b = replicate amt val
+          c = addPadding amt w val (drop w xs)
+
 {-
   | For each character in the font there is an index:
        x_start_offset into texture (normalized for UV)
@@ -71,11 +78,26 @@ createAtlas path px texUnit = do
   runFreeType $ ft_Set_Pixel_Sizes ff (fromIntegral px) 0
 
   -- calulate width and height of atlas
-  (w,h) <- foldM (\(w,h) i -> do
-           runFreeType $ ft_Load_Char ff i ft_LOAD_RENDER
+  (ww,hh) <- foldM (\(ww,hh) i -> do
+
+           chNdx <- ft_Get_Char_Index ff $ fromIntegral i
+           runFreeType $ ft_Load_Glyph ff chNdx 0
+
            slot <- peek $ glyph ff
-           bmp <- peek $ bitmap slot
-           return (w + width bmp, max h $ rows bmp)) (0,0) [32..127]
+           runFreeType $ ft_Render_Glyph slot ft_RENDER_MODE_NORMAL
+
+--           runFreeType $ ft_Load_Char ff i ft_LOAD_RENDER
+--           slot <- peek $ glyph ff
+
+           bmp <- peek $ bitmap slot           
+           let w  = fromIntegral $ width bmp
+               h  = fromIntegral $ rows bmp
+               w' = fromIntegral w :: Integer
+               h' = fromIntegral h
+               p  = 4 - w `mod` 4
+               nw = p + fromIntegral w'           
+           
+           return (ww + nw, max hh h)) (0,0) [32..127]
 
   -- now we know the size create the atlas texture
   -- Set the texture params on our bound texture.
@@ -93,7 +115,7 @@ createAtlas path px texUnit = do
           NoProxy
           0
           R8
-          (TextureSize2D (fromIntegral w) (fromIntegral h))
+          (TextureSize2D (fromIntegral ww) (fromIntegral hh))
           0
           (PixelData Red UnsignedByte nullPtr)
 
@@ -108,26 +130,31 @@ createAtlas path px texUnit = do
 
             bmp <- peek $ bitmap slot
             
-            let w' = width bmp
-                r' = rows bmp
-                          
-            -- Get the raw bitmap data.
-            bmpData <- peekArray ((fromIntegral w') * (fromIntegral r')) $ buffer bmp
+            let w  = fromIntegral $ width bmp
+                h  = fromIntegral $ rows bmp
+                w' = fromIntegral w :: Integer
+                r' = fromIntegral h
+                p  = 4 - w `mod` 4
+                nw = p + fromIntegral w'
             
-            withArray bmpData $ \ptr->
+            -- Get the raw bitmap data.
+            bmpData <- peekArray (w*h) $ buffer bmp
+            let data' = addPadding p w 0 bmpData
+            
+            withArray data' $ \ptr->
               texSubImage2D
                 Texture2D
                 0
                 (TexturePosition2D (fromIntegral x) (fromIntegral 0)) 
-                (TextureSize2D (fromIntegral w') (fromIntegral r'))
+                (TextureSize2D (fromIntegral nw) (fromIntegral r'))
                 (PixelData Red UnsignedByte ptr)
             
             let ix = fromIntegral x   :: GLfloat
-                iw = fromIntegral w   :: GLfloat
-                ih = fromIntegral h   :: GLfloat
-                iw' = fromIntegral w' :: GLfloat
+                iw = fromIntegral ww   :: GLfloat
+                ih = fromIntegral hh   :: GLfloat
+                iw' = fromIntegral nw :: GLfloat
                 ir  = fromIntegral r' :: GLfloat                
-            return (x + w', (ix / iw, (ix + iw') / iw, ir / ih) : xs)) (0, []) [32..127]
+            return (x + nw, (ix / iw, (ix + iw') / iw, ir / ih) : xs)) (0, []) [32..127]
 
   -- finally setup the textures sampler
   textureFilter   Texture2D   $= ((Linear', Nothing), Linear')

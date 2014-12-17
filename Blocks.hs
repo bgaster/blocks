@@ -27,7 +27,7 @@ import Control.Concurrent (threadDelay)
 import Control.Monad.RWS.Strict  (RWST, ask, asks, evalRWST, get, liftIO, modify, put)
 import Data.Bool.Extras
 import System.Random
-import FontAtlas
+import Graphics.Renderer.FontAtlas
 
 import Window
 
@@ -387,12 +387,26 @@ scoreText :: GLfloat  ->
              [Char] ->
              IO (BufferedVertices [VPos,Tex])
 scoreText x y offsets (d1:d2:d3:d4:d5:_) = bufferVertices vt
-  where (o,o',h) = charToOffsetWidthHeight offsets d1 
+  where (o1,o1',h1) = charToOffsetWidthHeight offsets d1
+        (o2,o2',h2) = charToOffsetWidthHeight offsets d2
+        (o3,o3',h3) = charToOffsetWidthHeight offsets d3
+        (o4,o4',h4) = charToOffsetWidthHeight offsets d4
+        (o5,o5',h5) = charToOffsetWidthHeight offsets d5
         vt :: [PlainFieldRec [VPos,Tex]]
-        vt = concat $ zipWith (zipWith (\pt uv -> vpos =: pt <+> tex =: uv)) v t 
-        v = square x y
-        t = [[V2 o 0, V2 o' 0, V2 o h],
-             [V2 o h, V2 o' h, V2 o' 0]]
+        vt = concat $ concat ps 
+        f (sq, t) = zipWith (zipWith (\pt uv -> vpos =: pt <+> tex =: uv)) sq t
+        
+        ps = map f [
+          (square x y, [[V2 o1 0, V2 o1' 0, V2 o1 h1],
+                        [V2 o1 h1, V2 o1' h1, V2 o1' 0]]),
+          (square (x+1) y, [[V2 o2 0, V2 o2' 0, V2 o2 h2],
+                           [V2 o2 h1, V2 o2' h1, V2 o2' 0]]),
+          (square (x+2) y, [[V2 o3 0, V2 o3' 0, V2 o3 h3],
+                           [V2 o3 h1, V2 o3' h1, V2 o3' 0]]),
+          (square (x+3) y, [[V2 o4 0, V2 o4' 0, V2 o4 h4],
+                           [V2 o4 h1, V2 o4' h4, V2 o4' 0]]),
+          (square (x+4) y, [[V2 o5 0, V2 o5' 0, V2 o5 h5],
+                           [V2 o5 h5, V2 o5' h5, V2 o5' 0]]) ]
 
 -- Generate the triangles for the board, this is done just once
 -- If we used a SOA VOA, then we could upload this once and never again
@@ -546,24 +560,28 @@ renderer iworld = do
      bindVertices verts
      bindBuffer ElementArrayBuffer $= Just indices
      
-   (chars, offsets)  <- createAtlas ("resources"</>"ArcadeClassic.ttf") 48 1
+--   (chars, offsets)  <- createAtlas ("resources"</>"ArcadeClassic.ttf") 48 1
+   (chars, offsets)  <- createAtlas ("resources"</>"ArcadeClassic.ttf") 48 1   
    setUniforms ts (texSampler =: 1)
-   tverts <- scoreText 10 18 offsets ['0', '0', '0', '0', '0']
-   tindices <- bufferIndices [0 .. 2 * 3 * 4]
+   tverts   <- scoreText 11 18 offsets ['0', '0', '0', '0', '0']
+   tindices <- bufferIndices [0 .. 2 * 3 * 5]
    tvao <- makeVAO $ do
      enableVertices' ts tverts
      bindVertices tverts
      bindBuffer ElementArrayBuffer $= Just tindices
 
    return $ \i world ui -> do
-     currentProgram $= Just (program s)
-     setUniforms s i
 
      w <- play verts ui world
 
      if isJust w
-     then do withVAO vao . withTextures2D [blocks] $ drawIndexedTris (2 * 10 * 20)
-             withVAO tvao . withTextures2D [chars] $ drawIndexedTris 2
+     then do 
+             currentProgram $= Just (program s)
+             setUniforms s i
+             withVAO vao . withTextures2D [blocks] $ drawIndexedTris (2 * 10 * 20)
+             currentProgram $= Just (program ts)
+             setUniforms ts i
+             withVAO tvao . withTextures2D [chars] $ drawIndexedTris (2*5)
              return w
      else return w
              
@@ -572,7 +590,7 @@ renderer iworld = do
 
 loop :: IO UI -> World -> IO ()
 loop tick world = do
-  clearColor $= Color4 0.01 0.01 0.01 1
+  clearColor $= Color4 0.00 0.1 0.1 1
   r <- Blocks.renderer world
   go camera2D world r
   where go :: Camera GLfloat -> World -> (GLInfo -> World -> UI -> IO (Maybe World)) -> IO ()

@@ -4,7 +4,7 @@
   Code was inspired by the blog:
        http://wiki.zyghost.com/Haskell%20font%20rendering%20with%20freetype2%20and%20opengl
 -}
-module FontAtlas (
+module Graphics.Renderer.FontAtlas (
        CharInfo,
        charToOffsetWidthHeight,
        createAtlas

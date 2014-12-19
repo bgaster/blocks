@@ -28,8 +28,18 @@ import Control.Monad.RWS.Strict  (RWST, ask, asks, evalRWST, get, liftIO, modify
 import Data.Bool.Extras
 import System.Random
 import Graphics.Renderer.FontAtlas
-
+import Data.Char
 import Window
+
+--------------------------------------------------------------------------------
+-- Utils
+--------------------------------------------------------------------------------
+toDigits :: Int -> [Int]
+toDigits x = let d = x `div` 10
+                 m = x `mod` 10
+             in if d == 0
+                then [m]
+                else toDigits d ++ [m]
 
 --------------------------------------------------------------------------------
 -- Board
@@ -290,7 +300,6 @@ inBoard (x,y) = (0 <= x && x < 10) && (0 <= y && y < 20)
 initialPosition :: BlockID -> Pos
 initialPosition id = (5,0)
 
---iterationDelay :: Int -> Int
 iterationDelay :: Int -> Double
 iterationDelay level = (11.0 - (fromIntegral level)) * 0.05
 
@@ -305,13 +314,30 @@ idelay    = SField :: SField ("idelay"   ::: Double)
 ticks     = SField :: SField ("ticks"    ::: Double)
 frames    = SField :: SField ("frames"   ::: Double)
 
-type World' = ["block" ::: BlockID, "nblock" ::: BlockID, "rotation" ::: Int, "position" ::: Pos,
-               "board" ::: Board, "score" ::: Int, "nlines" ::: Int, "idelay" ::: Double,
-               "ticks" ::: Double, "frames" ::: Double]
+type World' = ["block" ::: BlockID,
+               "nblock" ::: BlockID,
+               "rotation" ::: Int,
+               "position" ::: Pos,
+               "board" ::: Board,
+               "score" ::: Int,
+               "nlines" ::: Int,
+               "idelay" ::: Double,
+               "ticks" ::: Double,
+               "frames" ::: Double]
 
 type World = PlainFieldRec World' 
 
-mkWorld :: BlockID -> BlockID -> Int -> Pos -> Board -> Int -> Int -> Double -> Double -> Double -> World
+mkWorld :: BlockID ->
+           BlockID ->
+           Int ->
+           Pos ->
+           Board ->
+           Int ->
+           Int ->
+           Double ->
+           Double ->
+           Double ->
+           World
 mkWorld id nid r p b s l d t f =
   block =: id <+> nblock =: nid <+> rotation =: r <+> pos =: p <+>
   board =: b <+> score =: s <+> nlines =: l <+>
@@ -378,6 +404,12 @@ square x y = [[V2 (x * cell_width) (y * cell_height + cell_height),
      cell_height :: GLfloat
      cell_height = 1.0 / 20
 
+
+createScore :: Int -> [Char]
+createScore s = let digits = take 5 $ toDigits s
+                in (take (5 - (length digits)) ['0','0','0','0','0']) ++
+                   (map (\c -> toEnum $ c + 48) digits)
+
 -- As we only want to print the minimum number of digits we
 -- generate verts least digit first and then we simply draw the required
 -- number of triangles. Score limited to 5 digits!!
@@ -386,7 +418,14 @@ scoreText :: GLfloat  ->
              CharInfo ->
              [Char] ->
              IO (BufferedVertices [VPos,Tex])
-scoreText x y offsets (d1:d2:d3:d4:d5:_) = bufferVertices vt
+scoreText x y offsets digits = bufferVertices $ scoreText' x y offsets digits 
+
+scoreText' :: GLfloat  ->  
+              GLfloat  ->
+              CharInfo ->
+              [Char] ->
+              [PlainFieldRec [VPos,Tex]]
+scoreText' x y offsets (d1:d2:d3:d4:d5:_) = vt
   where (o1,o1',h1) = charToOffsetWidthHeight offsets d1
         (o2,o2',h2) = charToOffsetWidthHeight offsets d2
         (o3,o3',h3) = charToOffsetWidthHeight offsets d3
@@ -527,8 +566,6 @@ play verts ui world = do
                           s' <- if nls > 0 
                                 then do let l = levelUp nl
                                             ss = (s + calPoints nls l)
-                                        print ("score = " ++ show ss)
-                                        print ("level = " ++ show l)
                                         return ss
                                 else return s
                           nbid' <- chooseBlock
@@ -560,10 +597,9 @@ renderer iworld = do
      bindVertices verts
      bindBuffer ElementArrayBuffer $= Just indices
      
---   (chars, offsets)  <- createAtlas ("resources"</>"ArcadeClassic.ttf") 48 1
    (chars, offsets)  <- createAtlas ("resources"</>"ArcadeClassic.ttf") 48 1   
    setUniforms ts (texSampler =: 1)
-   tverts   <- scoreText 11 18 offsets ['0', '0', '0', '0', '0']
+   tverts   <- scoreText 11 18 offsets $ createScore 0
    tindices <- bufferIndices [0 .. 2 * 3 * 5]
    tvao <- makeVAO $ do
      enableVertices' ts tverts
@@ -581,6 +617,12 @@ renderer iworld = do
              withVAO vao . withTextures2D [blocks] $ drawIndexedTris (2 * 10 * 20)
              currentProgram $= Just (program ts)
              setUniforms ts i
+
+             -- TODO: we should really only upload new score verts when it changes
+             --       this needs to be moved into play
+             reloadVertices tverts
+                            (fromList $ scoreText' 11 18 offsets $ createScore $ 
+                                        ((fromJust w) ^. rLens score))
              withVAO tvao . withTextures2D [chars] $ drawIndexedTris (2*5)
              return w
      else return w

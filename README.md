@@ -9,6 +9,10 @@ Haskell. The current implementation uses:
   * The shaders are trivial as all they do is single texture lookup
 * A simply renderer loop in the IO monad
 
+This is what is currently looks like:
+
+![ScreenShot](https://github.com/bgaster/blocks/blob/master/resources/screenshot.png)
+
 TODO
 ----
 

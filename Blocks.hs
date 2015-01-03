@@ -303,16 +303,16 @@ initialPosition id = (5,0)
 iterationDelay :: Int -> Double
 iterationDelay level = (11.0 - (fromIntegral level)) * 0.05
 
-block     = SField :: SField ("block"    ::: BlockID)
-nblock    = SField :: SField ("nblock"   ::: BlockID)
-rotation  = SField :: SField ("rotation" ::: Int)
-pos       = SField :: SField ("position" ::: Pos)
-board     = SField :: SField ("board"    ::: Board)
-score     = SField :: SField ("score"    ::: Int)
-nlines    = SField :: SField ("nlines"   ::: Int)
-idelay    = SField :: SField ("idelay"   ::: Double)
-ticks     = SField :: SField ("ticks"    ::: Double)
-frames    = SField :: SField ("frames"   ::: Double)
+block     = SField :: SField ("block"    ::: BlockID) -- current block
+nblock    = SField :: SField ("nblock"   ::: BlockID) -- next block
+rotation  = SField :: SField ("rotation" ::: Int)     -- current rotation
+pos       = SField :: SField ("position" ::: Pos)     -- current position
+board     = SField :: SField ("board"    ::: Board)   -- current board
+score     = SField :: SField ("score"    ::: Int)     -- current score
+nlines    = SField :: SField ("nlines"   ::: Int)     -- number of complete lines
+idelay    = SField :: SField ("idelay"   ::: Double)  -- delay between drop
+ticks     = SField :: SField ("ticks"    ::: Double)  -- ticks since start
+frames    = SField :: SField ("frames"   ::: Double)  -- number of frames processed
 
 type World' = ["block" ::: BlockID,
                "nblock" ::: BlockID,
